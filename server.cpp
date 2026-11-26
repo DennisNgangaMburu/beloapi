@@ -78,7 +78,7 @@ namespace beloapi {
 // =============================================================================
 
 constexpr const char* kName = "BeloAPI";
-constexpr const char* kVersion = "1.1.1";
+constexpr const char* kVersion = "1.2.0";
 constexpr const char* kAuthor = "Dennis Nganga Mburu (CrackBoy), Kenya";
 constexpr const char* kContact = "crackboyshop@proton.me";
 constexpr const char* kRepoUrl = "https://github.com/DennisNgangaMburu/beloapi";
@@ -94,6 +94,15 @@ struct Config {
     std::string host = "127.0.0.1";
     int port = kDefaultPort;
     std::string upstream = "https://www.airbnb.com";
+
+    // Empty means no authentication. When set (--token or BELOAPI_TOKEN) every
+    // /api/* and /mcp request must send the token, which is what makes it
+    // reasonable to expose this proxy on a server.
+    std::string token;
+
+    // Binding to a non-loopback address is refused unless the operator opts in
+    // with --allow-public, so an accidental --host cannot expose the proxy.
+    bool allow_public = false;
 
     // Public web API key that airbnb.com ships in its own JavaScript bundle.
     // It is not a secret or a user credential; it identifies the web client.
@@ -1276,6 +1285,8 @@ inline const char* status_text(int status) {
         case 202: return "Accepted";
         case 204: return "No Content";
         case 400: return "Bad Request";
+        case 401: return "Unauthorized";
+        case 403: return "Forbidden";
         case 404: return "Not Found";
         case 405: return "Method Not Allowed";
         case 413: return "Payload Too Large";
@@ -1297,8 +1308,9 @@ inline std::string build_response(const HttpResponse& res) {
     out += "Date: " + http_date() + "\r\n";
     out += "Server: BeloAPI/" + std::string(kVersion) + "\r\n";
     out += "Access-Control-Allow-Origin: *\r\n";
-    out += "Access-Control-Allow-Headers: Content-Type, Accept, Mcp-Session-Id\r\n";
+    out += "Access-Control-Allow-Headers: Content-Type, Accept, Authorization, X-API-Key, Mcp-Session-Id\r\n";
     out += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n";
+    out += "Access-Control-Max-Age: 86400\r\n";
     for (const auto& h : res.extra_headers) out += h.first + ": " + h.second + "\r\n";
     out += "\r\n";
     out += res.body;
@@ -1433,6 +1445,7 @@ inline std::string openapi_document() {
     "license": { "name": "MIT", "identifier": "MIT" },
     "contact": { "name": "Dennis Nganga Mburu (CrackBoy)", "email": "crackboyshop@proton.me" }
   },
+  "security": [{ "bearerAuth": [] }, {}],
   "servers": [
     { "url": "http://127.0.0.1:8787", "description": "Local instance. BeloAPI binds to loopback only." }
   ],
@@ -1659,6 +1672,13 @@ inline std::string openapi_document() {
     }
   },
   "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Required only when the server was started with --token or BELOAPI_TOKEN. /api and /mcp are guarded; / and /openapi.json stay public."
+      }
+    },
     "parameters": {
       "Query": { "name": "query", "in": "query", "required": true, "description": "Free-text place name, for example Mombasa", "schema": { "type": "string" } },
       "Location": { "name": "location", "in": "query", "description": "Destination, for example Mombasa. Either location or place_id is required", "schema": { "type": "string" } },
@@ -1768,6 +1788,35 @@ inline std::string health_document() {
 //  Section 9 - Router
 // =============================================================================
 
+// Pull the caller token out of Authorization: Bearer <token> or X-API-Key.
+// The query string is deliberately not accepted: request lines are logged,
+// and a token there would end up in every log file.
+inline std::string presented_token(const HttpRequest& req) {
+    auto header = req.headers.find("authorization");
+    if (header != req.headers.end()) {
+        const std::string& value = header->second;
+        const std::string prefix = "bearer ";
+        if (value.size() > prefix.size()) {
+            std::string head = value.substr(0, prefix.size());
+            for (char& c : head) c = (char)std::tolower((unsigned char)c);
+            if (head == prefix) return value.substr(prefix.size());
+        }
+        return value;  // bare token, tolerated for simple clients
+    }
+    header = req.headers.find("x-api-key");
+    if (header != req.headers.end()) return header->second;
+    return "";
+}
+
+// Compare without an early exit so response time does not leak the token.
+inline bool token_matches(const std::string& supplied) {
+    if (g_config.token.size() != supplied.size()) return false;
+    unsigned char difference = 0;
+    for (size_t i = 0; i < supplied.size(); i++)
+        difference = (unsigned char)(difference | (unsigned char)(g_config.token[i] ^ supplied[i]));
+    return difference == 0;
+}
+
 inline HttpResponse route(const HttpRequest& req) {
     // Normalise a trailing slash: "/api/health/" behaves like "/api/health".
     std::string path = req.path;
@@ -1784,6 +1833,18 @@ inline HttpResponse route(const HttpRequest& req) {
     if (req.method != "GET" && req.method != "POST" && req.method != "HEAD") {
         return json_response(405, "{\"error\":{\"code\":\"method_not_allowed\","
                                   "\"message\":\"Use GET for /api and POST for /mcp\"}}");
+    }
+
+    // The token guards the machine API and MCP. The landing page and the
+    // OpenAPI document stay readable so integrators can inspect the contract
+    // before they have credentials.
+    bool protected_path = path == "/api" || path.compare(0, 5, "/api/") == 0 || path == "/mcp";
+    if (!g_config.token.empty() && protected_path && !token_matches(presented_token(req))) {
+        HttpResponse res = json_response(
+            401, "{\"error\":{\"code\":\"unauthorized\",\"message\":\"Missing or "
+                 "invalid token. Send Authorization: Bearer <token> or X-API-Key.\"}}");
+        res.extra_headers.push_back({"WWW-Authenticate", "Bearer realm=\"beloapi\""});
+        return res;
     }
 
     if (path == "/") return json_response(200, index_document());
@@ -1888,21 +1949,45 @@ inline int run_server() {
     setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 #endif
 
+    // Loopback by default. Exposing the proxy on a server is a deliberate act:
+    // it needs --allow-public, and a token is strongly recommended because
+    // anyone who can reach the port can otherwise use the machine as an Airbnb
+    // proxy. See docs/API.md (deployment) for the recommended setup.
+    std::string bind_host = g_config.host;
+    if (bind_host == "localhost") bind_host = "127.0.0.1";
+
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons((unsigned short)g_config.port);
-    // Only loopback is supported; binding elsewhere would expose the proxy to
-    // the network, which users must opt into deliberately (see docs/SETUP.md).
-    address.sin_addr.s_addr = inet_addr("127.0.0.1");
-    if (g_config.host != "127.0.0.1" && g_config.host != "localhost") {
-        std::fprintf(stderr,
-                     "Refusing to bind %s: BeloAPI only listens on 127.0.0.1. "
-                     "Put a reverse proxy in front of it if you need remote access.\n",
-                     g_config.host.c_str());
+
+    in_addr requested_address{};
+    if (inet_pton(AF_INET, bind_host.c_str(), &requested_address) != 1) {
+        std::fprintf(stderr, "Not a valid IPv4 address: %s\n", g_config.host.c_str());
+        close_socket(listener);
 #ifdef _WIN32
         WSACleanup();
 #endif
         return 1;
+    }
+    address.sin_addr = requested_address;
+
+    bool loopback_bind = (bind_host == "127.0.0.1");
+    if (!loopback_bind && !g_config.allow_public) {
+        std::fprintf(stderr,
+                     "Refusing to bind %s: add --allow-public to expose BeloAPI beyond "
+                     "loopback, and set --token or BELOAPI_TOKEN to require a token.\n",
+                     g_config.host.c_str());
+        close_socket(listener);
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        return 1;
+    }
+    if (!loopback_bind && g_config.token.empty()) {
+        std::fprintf(stderr,
+                     "Warning: listening on %s with no token. Anyone who can reach this "
+                     "port can use this machine as an Airbnb proxy.\n",
+                     bind_host.c_str());
     }
 
     if (bind(listener, (sockaddr*)&address, sizeof(address)) != 0) {
@@ -1925,9 +2010,15 @@ inline int run_server() {
 
     std::printf("\n  %s v%s - unofficial Airbnb API + MCP\n", kName, kVersion);
     std::printf("  by %s\n  contact: %s\n\n", kAuthor, kContact);
-    std::printf("  http://127.0.0.1:%d/           landing page\n", g_config.port);
-    std::printf("  http://127.0.0.1:%d/api/health health\n", g_config.port);
-    std::printf("  http://127.0.0.1:%d/mcp        MCP endpoint (POST)\n\n", g_config.port);
+    // "0.0.0.0" is not a URL anyone can open, so print a usable one for it.
+    std::string shown_host = (bind_host == "0.0.0.0") ? "127.0.0.1" : bind_host;
+    std::printf("  http://%s:%d/           landing page\n", shown_host.c_str(), g_config.port);
+    std::printf("  http://%s:%d/api/health health\n", shown_host.c_str(), g_config.port);
+    std::printf("  http://%s:%d/mcp        MCP endpoint (POST)\n", shown_host.c_str(), g_config.port);
+    if (bind_host == "0.0.0.0")
+        std::printf("  listening on every interface, port %d\n", g_config.port);
+    if (!g_config.token.empty()) std::printf("  auth: Bearer token required for /api and /mcp\n");
+    std::printf("\n");
     std::printf("  Ctrl+C to stop.\n\n");
     std::fflush(stdout);
 
@@ -2027,6 +2118,9 @@ static void print_usage() {
         "Made by %s. Contact: %s\n\n"
         "Usage: beloapi [options]\n\n"
         "  --port <number>   port to listen on (default %d)\n"
+        "  --host <ip>       address to bind (default 127.0.0.1; needs --allow-public)\n"
+        "  --allow-public    permit binding a non-loopback address (server use)\n"
+        "  --token <value>   require this token on /api and /mcp (or set BELOAPI_TOKEN)\n"
         "  --mcp-stdio       serve MCP over stdin/stdout for desktop AI clients\n"
         "  --test            call every upstream route and report, then exit\n"
         "  --version         print the version and exit\n"
@@ -2049,6 +2143,12 @@ int main(int argc, char** argv) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
     beloapi::g_started_at = std::time(nullptr);
+
+    // The environment is the safer place for a token on servers and in
+    // containers: command lines are visible in process listings.
+    if (const char* from_env = std::getenv("BELOAPI_TOKEN")) {
+        if (*from_env) beloapi::g_config.token = from_env;
+    }
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -2077,6 +2177,18 @@ int main(int argc, char** argv) {
         }
         if (arg == "--host" && i + 1 < argc) {
             beloapi::g_config.host = argv[++i];
+            continue;
+        }
+        if (arg == "--allow-public") {
+            beloapi::g_config.allow_public = true;
+            continue;
+        }
+        if (arg == "--token" && i + 1 < argc) {
+            beloapi::g_config.token = argv[++i];
+            if (beloapi::g_config.token.empty()) {
+                std::fprintf(stderr, "--token needs a value\n");
+                return 2;
+            }
             continue;
         }
         std::fprintf(stderr, "Unknown option: %s (try --help)\n", arg.c_str());

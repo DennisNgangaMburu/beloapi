@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/DennisNgangaMburu/beloapi/actions/workflows/windows-release.yml"><img alt="Windows build" src="https://img.shields.io/github/actions/workflow/status/DennisNgangaMburu/beloapi/windows-release.yml?label=windows%20build"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-1.1.1-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.2.0-blue">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey">
 </p>
@@ -62,6 +62,12 @@ every option, or `beloapi.exe --test` to check every upstream route.
 
 ## Endpoints
 
+The complete developer reference — every parameter, the fields to read out of
+each document, the error catalogue, status codes, integration examples (Node,
+Python, Go, PHP, browser) and deployment recipes — is **[docs/API.md](docs/API.md)**.
+Import `http://127.0.0.1:8787/openapi.json` into Postman, Insomnia or Swagger to
+generate a client.
+
 Responses are the raw Airbnb JSON documents, passed through with their original
 HTTP status. Errors produced by BeloAPI itself look like
 `{"error":{"code":"...","message":"..."}}`.
@@ -87,6 +93,22 @@ Extra query parameters: `locale`, `currency`, `country`, `num_results`,
 
 `/api/search` resolves `location` to a `place_id` automatically. Pass `place_id`
 yourself to skip that lookup.
+
+## Running it for other apps
+
+By default BeloAPI listens on loopback only, which is what you want on a
+workstation. To serve it to a website, a phone app or another server, opt in and
+protect it with a token:
+
+```bash
+beloapi.exe --allow-public --host 0.0.0.0 --token "a-long-random-string"
+```
+
+`BELOAPI_TOKEN` in the environment does the same thing, and keeps the value out
+of the process list. Callers then send `Authorization: Bearer <token>` (or
+`X-API-Key:`) on every `/api/*` and `/mcp` request; `/` and `/openapi.json` stay
+readable. Deployment behind nginx with TLS, systemd units, Windows services and
+rate limiting are covered in [docs/API.md](docs/API.md#8-deployment).
 
 ## MCP
 
@@ -166,6 +188,7 @@ are in **[docs/SETUP.md](docs/SETUP.md)**.
 ```
 server.cpp                 the whole server: HTTP API, MCP, HTTP client
 CMakeLists.txt             cross-platform build
+docs/API.md                developer reference: endpoints, errors, integration, deployment
 docs/SETUP.md              install, run, autostart, troubleshoot
 CONTRIBUTING.md            how to add routes/tools and port the client
 .github/workflows/         builds the Windows exe on every tag

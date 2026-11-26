@@ -63,7 +63,7 @@ beloapi.exe
 ```
 
 ```
-  BeloAPI v1.1.1 - unofficial Airbnb API + MCP
+  BeloAPI v1.2.0 - unofficial Airbnb API + MCP
   by Dennis Nganga Mburu (CrackBoy), Kenya
   contact: crackboyshop@proton.me
 
@@ -80,7 +80,9 @@ Options:
 | --- | --- |
 | `--port <n>` | Listen on another port (default 8787) |
 | `--mcp-stdio` | Serve MCP over stdin/stdout instead of HTTP (for desktop AI clients) |
-| `--host <addr>` | Accepted for compatibility; only `127.0.0.1`/`localhost` bind |
+| `--host <addr>` | Address to bind (default `127.0.0.1`); non-loopback needs `--allow-public` |
+| `--allow-public` | Permit binding beyond loopback, for server use |
+| `--token <value>` | Require this token on `/api` and `/mcp` (`BELOAPI_TOKEN` also works) |
 | `--test` | Call every upstream route once and print PASS/FAIL |
 | `--version` | Print the version |
 | `--help` | Print usage |
@@ -186,6 +188,10 @@ authentication there. Never expose it directly to the internet: it is an open
 proxy to a third-party service.
 
 ## 5. Connect an MCP client
+
+If you expose BeloAPI to other machines, start it with `--allow-public --host
+0.0.0.0` and a token, then read [API.md](API.md#8-deployment) for the nginx,
+systemd and service setup. The rest of this section is about MCP clients.
 
 Two transports are available. README has the full examples; these are the two
 that matter.
