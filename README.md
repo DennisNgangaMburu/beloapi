@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/DennisNgangaMburu/beloapi/actions/workflows/windows-release.yml"><img alt="Windows build" src="https://img.shields.io/github/actions/workflow/status/DennisNgangaMburu/beloapi/windows-release.yml?label=windows%20build"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.1.1-blue">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey">
 </p>

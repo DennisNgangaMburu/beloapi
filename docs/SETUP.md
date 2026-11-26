@@ -63,7 +63,7 @@ beloapi.exe
 ```
 
 ```
-  BeloAPI v1.1.0 - unofficial Airbnb API + MCP
+  BeloAPI v1.1.1 - unofficial Airbnb API + MCP
   by Dennis Nganga Mburu (CrackBoy), Kenya
   contact: crackboyshop@proton.me
 

@@ -46,7 +46,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <iostream>
 #include <map>
 #include <string>
 #include <thread>
@@ -79,7 +78,7 @@ namespace beloapi {
 // =============================================================================
 
 constexpr const char* kName = "BeloAPI";
-constexpr const char* kVersion = "1.1.0";
+constexpr const char* kVersion = "1.1.1";
 constexpr const char* kAuthor = "Dennis Nganga Mburu (CrackBoy), Kenya";
 constexpr const char* kContact = "crackboyshop@proton.me";
 constexpr const char* kRepoUrl = "https://github.com/DennisNgangaMburu/beloapi";
@@ -1191,24 +1190,38 @@ inline std::string mcp_process(const std::string& body, bool* empty_reply = null
 // LM Studio) launch a server as a child process and exchange one JSON-RPC
 // message per line over stdin/stdout. stdout must carry protocol traffic only,
 // so the ready line and every diagnostic go to stderr.
+// Reads stdin with C stdio rather than <iostream>: the iostream and locale
+// machinery would add about 2 MB to the statically linked release binary for
+// no gain here.
 inline int run_mcp_stdio() {
     std::fprintf(stderr, "%s %s MCP stdio server ready\n", kName, kVersion);
     std::fflush(stderr);
 
-    std::string line;
-    while (std::getline(std::cin, line)) {
-        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
-            line.pop_back();
-        if (line.empty()) continue;
+    auto handle = [](std::string& message) {
+        while (!message.empty() && (message.back() == '\r' || message.back() == ' ' ||
+                                    message.back() == '\t' || message.back() == '\n'))
+            message.pop_back();
+        if (message.empty()) return;
 
         bool notification = false;
-        std::string reply = mcp_process(line, &notification);
-        if (notification || reply.empty()) continue;
+        std::string reply = mcp_process(message, &notification);
+        if (notification || reply.empty()) return;  // nothing to say back
 
         std::fwrite(reply.data(), 1, reply.size(), stdout);
         std::fputc('\n', stdout);
         std::fflush(stdout);
+    };
+
+    std::string pending;
+    char buffer[65536];
+    while (std::fgets(buffer, (int)sizeof(buffer), stdin)) {
+        pending += buffer;
+        if (pending.back() == '\n') {
+            handle(pending);
+            pending.clear();
+        }
     }
+    handle(pending);  // final message may arrive without a trailing newline
     return 0;
 }
 
