@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BeloAPI — unofficial Airbnb JSON API + MCP server</title>
+<meta name="description" content="BeloAPI turns Airbnb's public web requests into a clean local JSON API and MCP tools. One C++ file, zero dependencies, Windows binary, MIT licensed.">
+<meta name="author" content="Dennis Nganga Mburu (CrackBoy)">
+<meta property="og:title" content="BeloAPI — unofficial Airbnb JSON API + MCP server">
+<meta property="og:description" content="One C++ file. Zero dependencies. JSON API and MCP tools for Airbnb data.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://DennisNgangaMburu.github.io/beloapi/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0a0a'/%3E%3Ctext x='16' y='22' font-family='system-ui' font-size='18' font-weight='700' text-anchor='middle' fill='%23ffffff'%3EB%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #0a0a0a;
+    --muted: #5a5a5a;
+    --line: #e6e6e6;
+    --soft: #f6f6f6;
+    --accent: #0a0a0a;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: var(--fg); text-decoration: none; }
+  a.link { position: relative; }
+  a.link::after {
+    content: ""; position: absolute; left: 0; bottom: -2px; width: 0; height: 1px;
+    background: var(--fg); transition: width .25s ease;
+  }
+  a.link:hover::after { width: 100%; }
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255,255,255,.85); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .brand { font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+  .brand span { color: var(--muted); font-weight: 400; margin-left: 6px; font-size: 13px; }
+  .nav-links { display: flex; gap: 24px; font-size: 14px; color: var(--muted); }
+  .nav-links a { color: var(--muted); transition: color .2s; }
+  .nav-links a:hover { color: var(--fg); }
+
+  /* hero */
+  .hero { padding: 120px 0 80px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 24px;
+    opacity: 0; animation: fadeUp .8s .1s ease forwards;
+  }
+  h1 {
+    font-size: clamp(48px, 9vw, 104px); line-height: 0.95; letter-spacing: -0.04em;
+    font-weight: 700; margin: 0 0 24px;
+    opacity: 0; animation: fadeUp .9s .2s ease forwards;
+  }
+  .hero p.lede {
+    font-size: 20px; color: var(--muted); max-width: 640px; margin: 0 0 40px;
+    opacity: 0; animation: fadeUp .9s .35s ease forwards;
+  }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; opacity: 0; animation: fadeUp .9s .5s ease forwards; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 22px;
+    border: 1px solid var(--fg); border-radius: 999px; font-size: 14px; font-weight: 500;
+    transition: background .2s, color .2s, transform .2s;
+  }
+  .btn.primary { background: var(--fg); color: var(--bg); }
+  .btn.primary:hover { transform: translateY(-1px); }
+  .btn.ghost:hover { background: var(--soft); }
+  .hero-meta { margin-top: 48px; font-size: 13px; color: var(--muted); opacity: 0; animation: fadeUp .9s .65s ease forwards; }
+  .hero-meta code { background: var(--soft); padding: 2px 6px; border-radius: 4px; font-size: 12px; color: var(--fg); }
+
+  /* sections */
+  section { padding: 96px 0; border-top: 1px solid var(--line); }
+  .section-label {
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 16px;
+  }
+  h2 { font-size: clamp(28px, 4vw, 44px); letter-spacing: -0.02em; font-weight: 700; margin: 0 0 16px; line-height: 1.1; }
+  .section-intro { color: var(--muted); max-width: 620px; margin-bottom: 48px; font-size: 17px; }
+
+  /* features */
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+  .card {
+    padding: 28px; border: 1px solid var(--line); border-radius: 12px;
+    transition: transform .25s ease, border-color .25s ease;
+  }
+  .card:hover { transform: translateY(-3px); border-color: var(--fg); }
+  .card h3 { margin: 0 0 8px; font-size: 18px; letter-spacing: -0.01em; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .card .num { font-size: 12px; color: var(--muted); margin-bottom: 12px; letter-spacing: .1em; }
+
+  /* code block */
+  .code {
+    background: var(--soft); border: 1px solid var(--line); border-radius: 12px;
+    padding: 24px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
+    line-height: 1.7; overflow-x: auto; position: relative;
+  }
+  .code .prompt { color: var(--muted); user-select: none; }
+  .code .caret { display: inline-block; width: 8px; height: 14px; background: var(--fg); vertical-align: middle; animation: blink 1.1s step-end infinite; margin-left: 2px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* endpoints table */
+  .endpoints { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .endpoints th, .endpoints td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .endpoints th { color: var(--muted); font-weight: 500; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .endpoints td code { background: var(--soft); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .endpoints .method { font-weight: 600; font-size: 12px; }
+
+  /* founder */
+  .founder { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  .avatar {
+    width: 88px; height: 88px; border-radius: 50%; background: var(--fg); color: var(--bg);
+    display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .founder h3 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.01em; }
+  .founder .role { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+  .founder p { margin: 0; color: var(--muted); font-size: 14px; max-width: 520px; }
+
+  /* footer */
+  footer { padding: 64px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  .footer-grid { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 24px; }
+  .footer-grid a { color: var(--muted); }
+  .footer-grid a:hover { color: var(--fg); }
+
+  /* reveal */
+  .reveal { opacity: 0; transform: translateY(20px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 640px) {
+    .hero { padding: 80px 0 60px; }
+    section { padding: 64px 0; }
+    .nav-links { gap: 16px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container nav-inner">
+    <a class="brand" href="#top">BeloAPI <span>v1.2.0</span></a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#quickstart">Quick start</a>
+      <a href="#endpoints">Endpoints</a>
+      <a href="#founder">Founder</a>
+      <a class="link" href="https://github.com/DennisNgangaMburu/beloapi" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+  <div class="container hero">
+    <div class="eyebrow">Unofficial Airbnb JSON API + MCP server</div>
+    <h1>BeloAPI.</h1>
+    <p class="lede">One C++ file. Zero dependencies. Turns Airbnb's public web requests into a clean local JSON API and MCP tools for AI agents.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/DennisNgangaMburu/beloapi/releases/latest" target="_blank" rel="noopener">Download for Windows</a>
+      <a class="btn ghost" href="https://github.com/DennisNgangaMburu/beloapi" target="_blank" rel="noopener">View on GitHub</a>
+      <a class="btn ghost" href="https://github.com/DennisNgangaMburu/beloapi/blob/main/docs/API.md" target="_blank" rel="noopener">API reference</a>
+    </div>
+    <div class="hero-meta">
+      MIT licensed. Runs on <code>127.0.0.1:8787</code>. No login, no API keys of your own.
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="container">
+      <div class="section-label reveal">Features</div>
+      <h2 class="reveal">Small on purpose.</h2>
+      <p class="section-intro reveal">Everything you need to search stays and read Airbnb's public documents, and nothing you don't.</p>
+      <div class="features">
+        <div class="card reveal">
+          <div class="num">01</div>
+          <h3>JSON API</h3>
+          <p>Stays search, place autocomplete, markets, homepage feed, announcements, promotions, header, consent flags and client config.</p>
+        </div>
+        <div class="card reveal">
+          <div class="num">02</div>
+          <h3>MCP server</h3>
+          <p>Nine tools over HTTP or stdio, so Claude, Cursor, Codex and VS Code can call them directly, with no bridge process.</p>
+        </div>
+        <div class="card reveal">
+          <div class="num">03</div>
+          <h3>One file</h3>
+          <p><code>server.cpp</code> is the entire server. No npm, no Python, no DLLs. MinGW or MSVC, then run.</p>
+        </div>
+        <div class="card reveal">
+          <div class="num">04</div>
+          <h3>Anonymous</h3>
+          <p>No login, no cookies, no keys of your own. It only reads public data, and it refuses to bind beyond loopback unless you opt in.</p>
+        </div>
+        <div class="card reveal">
+          <div class="num">05</div>
+          <h3>Deployable</h3>
+          <p>Bearer-token auth, CORS, public bind and an OpenAPI 3.1 document. Runs behind nginx with TLS.</p>
+        </div>
+        <div class="card reveal">
+          <div class="num">06</div>
+          <h3>Portable core</h3>
+          <p>Windows is the released binary. Linux and macOS build from the same source.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <div class="container">
+      <div class="section-label reveal">Quick start</div>
+      <h2 class="reveal">Three commands.</h2>
+      <p class="section-intro reveal">Download the Windows binary, run it, and call the API.</p>
+      <div class="code reveal">
+<span class="prompt">$ </span>beloapi.exe<br>
+<span class="prompt">$ </span>curl "http://127.0.0.1:8787/api/health"<br>
+<span class="prompt">$ </span>curl "http://127.0.0.1:8787/api/search?location=Mombasa&amp;checkin=2026-12-10&amp;checkout=2026-12-12&amp;adults=2"<span class="caret"></span>
+      </div>
+      <p class="reveal" style="margin-top:24px; color: var(--muted); font-size:14px;">
+        Use a different port with <code style="background:var(--soft);padding:2px 6px;border-radius:4px;">beloapi.exe --port 9000</code>.
+        Run <code style="background:var(--soft);padding:2px 6px;border-radius:4px;">beloapi.exe --test</code> to check every upstream route.
+      </p>
+    </div>
+  </section>
+
+  <section id="endpoints">
+    <div class="container">
+      <div class="section-label reveal">Endpoints</div>
+      <h2 class="reveal">What it returns.</h2>
+      <p class="section-intro reveal">Responses are the raw Airbnb JSON documents, passed through with their original status. BeloAPI adds nothing and removes nothing.</p>
+      <table class="endpoints reveal">
+        <thead><tr><th>Method</th><th>Path</th><th>Returns</th></tr></thead>
+        <tbody>
+          <tr><td class="method">GET</td><td><code>/api/health</code></td><td>Version, author, uptime</td></tr>
+          <tr><td class="method">GET</td><td><code>/api/autocomplete?query=</code></td><td>Place suggestions with <code>place_id</code></td></tr>
+          <tr><td class="method">GET</td><td><code>/api/search?location=&amp;checkin=&amp;checkout=&amp;adults=</code></td><td>Stays, prices, ratings, coordinates</td></tr>
+          <tr><td class="method">GET</td><td><code>/api/markets</code></td><td>Region and market mapping</td></tr>
+          <tr><td class="method">GET</td><td><code>/api/homepage</code></td><td>Curated homepage feed</td></tr>
+          <tr><td class="method">GET</td><td><code>/api/announcements</code></td><td>Site-wide announcements</td></tr>
+          <tr><td class="method">GET</td><td><code>/api/promotions</code></td><td>Promotion slots</td></tr>
+          <tr><td class="method">GET</td><td><code>/api/header</code></td><td>Logged-out header menu</td></tr>
+          <tr><td class="method">GET</td><td><code>/api/consent</code></td><td>Consent flags</td></tr>
+          <tr><td class="method">GET</td><td><code>/api/config</code></td><td>Client configuration</td></tr>
+          <tr><td class="method">GET</td><td><code>/openapi.json</code></td><td>OpenAPI 3.1 description</td></tr>
+          <tr><td class="method">POST</td><td><code>/mcp</code></td><td>MCP over JSON-RPC 2.0</td></tr>
+        </tbody>
+      </table>
+      <p class="reveal" style="margin-top:20px; color: var(--muted); font-size:14px;">
+        Extra query parameters: <code style="background:var(--soft);padding:2px 6px;border-radius:4px;">locale currency country num_results place_id children infants pets items</code>.
+        Full parameter tables, response field maps and error codes are in <a class="link" href="https://github.com/DennisNgangaMburu/beloapi/blob/main/docs/API.md" target="_blank" rel="noopener">docs/API.md</a>.
+      </p>
+    </div>
+  </section>
+
+  <section id="mcp">
+    <div class="container">
+      <div class="section-label reveal">MCP</div>
+      <h2 class="reveal">For AI agents.</h2>
+      <p class="section-intro reveal">Nine tools over HTTP or stdio, so Claude Desktop, Claude Code, Cursor, Codex and VS Code can search stays and look up places without screen scraping.</p>
+      <div class="code reveal">
+<span class="prompt">$ </span>beloapi.exe --mcp-stdio<span class="caret"></span>
+      </div>
+      <p class="reveal" style="margin-top:20px; color: var(--muted); font-size:14px;">
+        Point an MCP client at <code style="background:var(--soft);padding:2px 6px;border-radius:4px;">http://127.0.0.1:8787/mcp</code>, or let it launch <code style="background:var(--soft);padding:2px 6px;border-radius:4px;">beloapi.exe --mcp-stdio</code> directly. No bridge process needed.
+      </p>
+    </div>
+  </section>
+
+  <section id="founder">
+    <div class="container">
+      <div class="section-label reveal">Founder</div>
+      <h2 class="reveal">Built by one person.</h2>
+      <div class="founder reveal">
+        <div class="avatar">DN</div>
+        <div>
+          <h3>Dennis Nganga Mburu</h3>
+          <div class="role">CrackBoy · Nairobi, Kenya</div>
+          <p>Unofficial Airbnb JSON API and MCP server, written in a single C++ file. MIT licensed. Not affiliated with Airbnb, Inc.</p>
+          <p style="margin-top:10px;"><a class="link" href="mailto:crackboyshop@proton.me">crackboyshop@proton.me</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="disclaimer">
+    <div class="container">
+      <div class="section-label reveal">Disclaimer</div>
+      <h2 class="reveal">Unofficial.</h2>
+      <p class="reveal" style="color: var(--muted); max-width: 720px;">
+        BeloAPI is an independent project and is not affiliated with, endorsed by or supported by Airbnb, Inc. "Airbnb" and the Bélo logo are trademarks of Airbnb, Inc. It reads the same public web endpoints the airbnb.com browser client uses. Respect Airbnb's Terms of Service and local law; do not use it to build a competing booking service. Persisted-query hashes expire and endpoints can change without notice.
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="container footer-grid">
+    <div>© 2026 Dennis Nganga Mburu (CrackBoy). MIT licensed.</div>
+    <div>
+      <a href="https://github.com/DennisNgangaMburu/beloapi" target="_blank" rel="noopener">GitHub</a> ·
+      <a href="https://github.com/DennisNgangaMburu/beloapi/releases/latest" target="_blank" rel="noopener">Releases</a> ·
+      <a href="https://github.com/DennisNgangaMburu/beloapi/blob/main/docs/API.md" target="_blank" rel="noopener">API docs</a> ·
+      <a href="https://github.com/DennisNgangaMburu/beloapi/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // scroll reveal
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+  // stagger cards slightly
+  document.querySelectorAll('.features .card').forEach((el, i) => { el.style.transitionDelay = (i * 0.06) + 's'; });
+</script>
+</body>
+</html>
