@@ -63,7 +63,7 @@ beloapi.exe
 ```
 
 ```
-  BeloAPI v1.0.0 - unofficial Airbnb API + MCP
+  BeloAPI v1.1.0 - unofficial Airbnb API + MCP
   by Dennis Nganga Mburu (CrackBoy), Kenya
   contact: crackboyshop@proton.me
 
@@ -79,6 +79,7 @@ Options:
 | Flag | Meaning |
 | --- | --- |
 | `--port <n>` | Listen on another port (default 8787) |
+| `--mcp-stdio` | Serve MCP over stdin/stdout instead of HTTP (for desktop AI clients) |
 | `--host <addr>` | Accepted for compatibility; only `127.0.0.1`/`localhost` bind |
 | `--test` | Call every upstream route once and print PASS/FAIL |
 | `--version` | Print the version |
@@ -98,7 +99,8 @@ A full self test that does not start the server:
 beloapi --test
 ```
 
-It should print nine `PASS` lines and `mcp tools/list PASS`.
+It should print eleven `PASS` lines, ending with `mcp tools/list` and
+`openapi.json`.
 
 ## 4. Run in the background
 
@@ -185,9 +187,26 @@ proxy to a third-party service.
 
 ## 5. Connect an MCP client
 
-Start BeloAPI first, then point the client at `http://127.0.0.1:8787/mcp`.
+Two transports are available. README has the full examples; these are the two
+that matter.
 
-**Cursor** — `.cursor/mcp.json`:
+**stdio** — the client starts the binary. No server needs to be running, and no
+Node bridge is involved. Claude Desktop (`claude_desktop_config.json`), Cursor
+or VS Code:
+
+```json
+{
+  "mcpServers": {
+    "beloapi": {
+      "command": "C:\\path\\to\\beloapi.exe",
+      "args": ["--mcp-stdio"]
+    }
+  }
+}
+```
+
+**HTTP** — start BeloAPI first, then point the client at
+`http://127.0.0.1:8787/mcp`.
 
 ```json
 { "mcpServers": { "beloapi": { "url": "http://127.0.0.1:8787/mcp" } } }
@@ -206,7 +225,8 @@ url = "http://127.0.0.1:8787/mcp"
 { "servers": { "beloapi": { "type": "http", "url": "http://127.0.0.1:8787/mcp" } } }
 ```
 
-**Clients with stdio-only transports** — bridge with:
+**Bridging** — only needed if a stdio-only client cannot be pointed at an
+executable directly:
 
 ```bash
 npx -y mcp-remote http://127.0.0.1:8787/mcp

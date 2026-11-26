@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/DennisNgangaMburu/beloapi/actions/workflows/windows-release.yml"><img alt="Windows build" src="https://img.shields.io/github/actions/workflow/status/DennisNgangaMburu/beloapi/windows-release.yml?label=windows%20build"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-1.0.0-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-blue">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey">
 </p>
@@ -31,8 +31,9 @@ without screen scraping.
 
 - **JSON API** — stays search, place autocomplete, markets, homepage feed,
   announcements, promotions, header, consent flags and client config.
-- **MCP server** — JSON-RPC 2.0 over HTTP with nine tools, so Claude, Cursor,
-  Codex, VS Code and other MCP clients can call it directly.
+- **MCP server** — JSON-RPC 2.0 over HTTP **or stdio** with nine tools, so
+  Claude Desktop, Claude Code, Cursor, Codex, VS Code and other MCP clients can
+  call it directly, with no bridge process.
 - **One file** — `server.cpp` is the entire server. No npm, no Python, no DLLs.
 - **Anonymous** — no login, no cookies, no API keys of your own. It only reads
   public data.
@@ -78,6 +79,7 @@ HTTP status. Errors produced by BeloAPI itself look like
 | GET | `/api/header` | Logged-out header menu structure |
 | GET | `/api/consent` | Consent flags |
 | GET | `/api/config` | Client configuration document |
+| GET | `/openapi.json` | OpenAPI 3.1 description, importable into Postman, Insomnia or Swagger |
 | POST | `/mcp` | MCP over JSON-RPC 2.0 |
 
 Extra query parameters: `locale`, `currency`, `country`, `num_results`,
@@ -88,9 +90,24 @@ yourself to skip that lookup.
 
 ## MCP
 
-Point an MCP client that supports HTTP transport at `http://127.0.0.1:8787/mcp`.
+BeloAPI speaks MCP two ways. Use whichever your client supports.
 
-Cursor (`.cursor/mcp.json`):
+**stdio** — for Claude Desktop, Cursor, VS Code, LM Studio and most desktop
+clients. The client launches the binary itself, so nothing needs to be running
+first and no Node bridge is needed:
+
+```json
+{
+  "mcpServers": {
+    "beloapi": {
+      "command": "C:\\path\\to\\beloapi.exe",
+      "args": ["--mcp-stdio"]
+    }
+  }
+}
+```
+
+**HTTP** — for clients that connect to a URL. Start `beloapi.exe` first:
 
 ```json
 {
@@ -107,8 +124,8 @@ Codex (`~/.codex/config.toml`):
 url = "http://127.0.0.1:8787/mcp"
 ```
 
-Clients that only launch stdio servers can bridge to it, for example
-`npx -y mcp-remote http://127.0.0.1:8787/mcp`.
+If a stdio-only client insists on a bridge instead of launching the binary
+itself, `npx -y mcp-remote http://127.0.0.1:8787/mcp` still works.
 
 | Tool | Purpose |
 | --- | --- |

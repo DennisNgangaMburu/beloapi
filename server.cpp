@@ -36,6 +36,7 @@
 //  ---
 //    beloapi                 start on 127.0.0.1:8787
 //    beloapi --port 9000     start on another port
+//    beloapi --mcp-stdio     speak MCP over stdin/stdout instead of HTTP
 //    beloapi --help          list every option
 //    beloapi --test          check every upstream route, then exit
 // =============================================================================
@@ -45,6 +46,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <iostream>
 #include <map>
 #include <string>
 #include <thread>
@@ -77,7 +79,7 @@ namespace beloapi {
 // =============================================================================
 
 constexpr const char* kName = "BeloAPI";
-constexpr const char* kVersion = "1.0.0";
+constexpr const char* kVersion = "1.1.0";
 constexpr const char* kAuthor = "Dennis Nganga Mburu (CrackBoy), Kenya";
 constexpr const char* kContact = "crackboyshop@proton.me";
 constexpr const char* kRepoUrl = "https://github.com/DennisNgangaMburu/beloapi";
@@ -1019,7 +1021,7 @@ inline const std::vector<Tool>& tool_table() {
         {"airbnb_search_stays",
          "Search Airbnb stays for a destination and date range. Returns the raw StaysSearch "
          "response: listings, prices, ratings and pagination info.",
-         R"json({"type":"object","properties":{"location":{"type":"string","description":"Destination, for example Mombasa"},"place_id":{"type":"string","description":"Optional Google place id from airbnb_autocomplete"},"checkin":{"type":"string","description":"Check-in date, YYYY-MM-DD"},"checkout":{"type":"string","description":"Check-out date, YYYY-MM-DD"},"adults":{"type":"integer","description":"Number of adults (default 1)"},"children":{"type":"integer"},"infants":{"type":"integer"},"pets":{"type":"integer","description":"1 when travelling with pets"},"items":{"type":"integer","description":"Results per page (default 18)"},"locale":{"type":"string"},"currency":{"type":"string"}},"required":["location"]})json",
+         R"json({"type":"object","properties":{"location":{"type":"string","description":"Destination, for example Mombasa. Either location or place_id is required"},"place_id":{"type":"string","description":"Google place id from airbnb_autocomplete. Either location or place_id is required"},"checkin":{"type":"string","description":"Check-in date, YYYY-MM-DD"},"checkout":{"type":"string","description":"Check-out date, YYYY-MM-DD"},"adults":{"type":"integer","description":"Number of adults (default 1)"},"children":{"type":"integer"},"infants":{"type":"integer"},"pets":{"type":"integer","description":"1 when travelling with pets"},"items":{"type":"integer","description":"Results per page (default 18). Keep this small: the raw document is large"},"locale":{"type":"string"},"currency":{"type":"string"}},"anyOf":[{"required":["location"]},{"required":["place_id"]}]})json",
          handle_search},
 
         {"airbnb_markets",
@@ -1183,6 +1185,31 @@ inline std::string mcp_process(const std::string& body, bool* empty_reply = null
     }
 
     return rpc_error(id, -32601, "Method not found: " + method);
+}
+
+// MCP over stdio: most desktop AI clients (Claude Desktop, Cursor, VS Code,
+// LM Studio) launch a server as a child process and exchange one JSON-RPC
+// message per line over stdin/stdout. stdout must carry protocol traffic only,
+// so the ready line and every diagnostic go to stderr.
+inline int run_mcp_stdio() {
+    std::fprintf(stderr, "%s %s MCP stdio server ready\n", kName, kVersion);
+    std::fflush(stderr);
+
+    std::string line;
+    while (std::getline(std::cin, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
+            line.pop_back();
+        if (line.empty()) continue;
+
+        bool notification = false;
+        std::string reply = mcp_process(line, &notification);
+        if (notification || reply.empty()) continue;
+
+        std::fwrite(reply.data(), 1, reply.size(), stdout);
+        std::fputc('\n', stdout);
+        std::fflush(stdout);
+    }
+    return 0;
 }
 
 // =============================================================================
@@ -1373,10 +1400,347 @@ inline std::string index_document() {
                        "\"GET /api/header\","
                        "\"GET /api/consent\","
                        "\"GET /api/config\","
+                       "\"GET /openapi.json\","
                        "\"POST /mcp\"],"
-                                                        "\"mcp\":{\"transport\":\"http\",\"protocolVersion\":\"2024-11-05\"},"
+                                                        "\"mcp\":{\"transports\":[\"http\",\"stdio\"],\"protocolVersion\":\"2024-11-05\"},"
                                  "\"repository\":" + quote(kRepoUrl) + "}";
     return body;
+}
+
+// OpenAPI 3.1 description of the HTTP API. Kept next to the router so the two
+// are edited together; `--test` parses it to catch syntax mistakes.
+inline std::string openapi_document() {
+    static const char* kBody = R"json({
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BeloAPI",
+    "version": "__VERSION__",
+    "summary": "Unofficial Airbnb JSON API and MCP server in a single C++ file.",
+    "description": "Read-only access to the public Airbnb web documents: stay search, destination suggestions, markets, homepage, announcements, promotions, header, consent and client configuration. Responses are the raw Airbnb JSON, passed through with their original HTTP status.",
+    "license": { "name": "MIT", "identifier": "MIT" },
+    "contact": { "name": "Dennis Nganga Mburu (CrackBoy)", "email": "crackboyshop@proton.me" }
+  },
+  "servers": [
+    { "url": "http://127.0.0.1:8787", "description": "Local instance. BeloAPI binds to loopback only." }
+  ],
+  "tags": [
+    { "name": "stays", "description": "Stay search and destinations" },
+    { "name": "site", "description": "Site chrome, consent and configuration" },
+    { "name": "mcp", "description": "Model Context Protocol endpoint" }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Service index",
+        "operationId": "getIndex",
+        "responses": {
+          "200": {
+            "description": "Name, version, endpoint list and repository",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Index" } } }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Health and version",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Server status and uptime",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } }
+          }
+        }
+      }
+    },
+    "/api/autocomplete": {
+      "get": {
+        "tags": ["stays"],
+        "summary": "Suggest destinations for free text",
+        "description": "Returns Airbnb's autocomplete document. Each term carries explore_search_params.place_id, which can be passed to /api/search as place_id.",
+        "operationId": "autocomplete",
+        "parameters": [
+          { "$ref": "#/components/parameters/Query" },
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" },
+          { "$ref": "#/components/parameters/Country" },
+          { "$ref": "#/components/parameters/NumResults" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "tags": ["stays"],
+        "summary": "Search stays for a destination and date range",
+        "description": "Returns the raw StaysSearch document: listings, total stay prices, ratings, coordinates, photo ids and pagination. Supply location, or a place_id from /api/autocomplete. The document is large (roughly 140-260 KB), so set items low when you only need a few results.",
+        "operationId": "searchStays",
+        "parameters": [
+          { "$ref": "#/components/parameters/Location" },
+          { "$ref": "#/components/parameters/PlaceId" },
+          { "$ref": "#/components/parameters/Checkin" },
+          { "$ref": "#/components/parameters/Checkout" },
+          { "$ref": "#/components/parameters/Adults" },
+          { "$ref": "#/components/parameters/Children" },
+          { "$ref": "#/components/parameters/Infants" },
+          { "$ref": "#/components/parameters/Pets" },
+          { "$ref": "#/components/parameters/Items" },
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/api/markets": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Markets for the caller region",
+        "operationId": "getMarkets",
+        "parameters": [
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/api/homepage": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Curated homepage feed",
+        "operationId": "getHomepage",
+        "parameters": [
+          { "$ref": "#/components/parameters/Vertical" },
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/api/announcements": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Site-wide announcements",
+        "operationId": "getAnnouncements",
+        "parameters": [
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/api/promotions": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Promotions for placement slots",
+        "operationId": "getPromotions",
+        "parameters": [
+          { "$ref": "#/components/parameters/Placements" },
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/api/header": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Logged-out header menu",
+        "operationId": "getHeader",
+        "parameters": [
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/api/consent": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Consent flags for a visitor",
+        "operationId": "getConsent",
+        "parameters": [
+          { "$ref": "#/components/parameters/DeviceId" },
+          { "$ref": "#/components/parameters/ConsentId" },
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "tags": ["site"],
+        "summary": "Client configuration and feature flags",
+        "operationId": "getConfig",
+        "parameters": [
+          { "$ref": "#/components/parameters/Locale" },
+          { "$ref": "#/components/parameters/Currency" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Upstream" },
+          "502": { "$ref": "#/components/responses/UpstreamDown" }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": ["mcp"],
+        "summary": "Model Context Protocol over JSON-RPC 2.0",
+        "description": "Methods: initialize, notifications/initialized, ping, tools/list, tools/call. Notifications are answered with 202 and no body. The same protocol is available over stdin/stdout by starting the binary with --mcp-stdio.",
+        "operationId": "mcp",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JsonRpcRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JsonRpcResponse" } } }
+          },
+          "202": { "description": "Notification accepted; no body" }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": ["site"],
+        "summary": "This document",
+        "operationId": "getOpenApi",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 description of BeloAPI",
+            "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Query": { "name": "query", "in": "query", "required": true, "description": "Free-text place name, for example Mombasa", "schema": { "type": "string" } },
+      "Location": { "name": "location", "in": "query", "description": "Destination, for example Mombasa. Either location or place_id is required", "schema": { "type": "string" } },
+      "PlaceId": { "name": "place_id", "in": "query", "description": "Google place id from /api/autocomplete. Either location or place_id is required", "schema": { "type": "string" } },
+      "Checkin": { "name": "checkin", "in": "query", "description": "Check-in date, YYYY-MM-DD", "schema": { "type": "string", "format": "date" } },
+      "Checkout": { "name": "checkout", "in": "query", "description": "Check-out date, YYYY-MM-DD", "schema": { "type": "string", "format": "date" } },
+      "Adults": { "name": "adults", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+      "Children": { "name": "children", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } },
+      "Infants": { "name": "infants", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } },
+      "Pets": { "name": "pets", "in": "query", "description": "1 when travelling with pets", "schema": { "type": "integer", "enum": [0, 1], "default": 0 } },
+      "Items": { "name": "items", "in": "query", "description": "Results per page", "schema": { "type": "integer", "minimum": 1, "default": 18 } },
+      "Locale": { "name": "locale", "in": "query", "description": "Locale such as en or fr", "schema": { "type": "string", "default": "en" } },
+      "Currency": { "name": "currency", "in": "query", "description": "ISO 4217 currency such as USD or KES", "schema": { "type": "string" } },
+      "Country": { "name": "country", "in": "query", "description": "ISO country code such as KE", "schema": { "type": "string" } },
+      "NumResults": { "name": "num_results", "in": "query", "description": "How many suggestions to return", "schema": { "type": "integer", "minimum": 1, "default": 5 } },
+      "Vertical": { "name": "vertical", "in": "query", "schema": { "type": "string", "enum": ["STAYS", "EXPERIENCES", "SERVICES"], "default": "STAYS" } },
+      "Placements": { "name": "placements", "in": "query", "description": "Comma-separated placement slots", "schema": { "type": "string", "default": "HOME_PAGE_POPOVER" } },
+      "DeviceId": { "name": "device_id", "in": "query", "schema": { "type": "string" } },
+      "ConsentId": { "name": "consent_id", "in": "query", "schema": { "type": "string" } }
+    },
+    "responses": {
+      "Upstream": {
+        "description": "The raw Airbnb document for this call",
+        "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+      },
+      "BadRequest": {
+        "description": "Missing or invalid input",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Airbnb does not recognise the requested place or route",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "UpstreamDown": {
+        "description": "BeloAPI could not reach Airbnb",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "hint": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "author": { "type": "string" },
+          "uptime_seconds": { "type": "integer" },
+          "upstream": { "type": "string" }
+        }
+      },
+      "Index": { "type": "object", "additionalProperties": true },
+      "JsonRpcRequest": {
+        "type": "object",
+        "required": ["jsonrpc", "method"],
+        "properties": {
+          "jsonrpc": { "type": "string", "const": "2.0" },
+          "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+          "method": { "type": "string" },
+          "params": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "JsonRpcResponse": {
+        "type": "object",
+        "properties": {
+          "jsonrpc": { "type": "string" },
+          "id": { "oneOf": [{ "type": "string" }, { "type": "integer" }, { "type": "null" }] },
+          "result": { "type": "object", "additionalProperties": true },
+          "error": {
+            "type": "object",
+            "properties": { "code": { "type": "integer" }, "message": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+})json";
+    std::string document(kBody);
+    size_t placeholder = document.find("__VERSION__");
+    if (placeholder != std::string::npos) document.replace(placeholder, 11, kVersion);
+    return document;
 }
 
 inline std::string health_document() {
@@ -1422,6 +1786,8 @@ inline HttpResponse route(const HttpRequest& req) {
     if (path == "/api/header") return from_upstream(handle_header(query));
     if (path == "/api/consent") return from_upstream(handle_consent(query));
     if (path == "/api/config") return from_upstream(handle_config(query));
+    if (path == "/openapi.json" || path == "/api/openapi.json")
+        return json_response(200, openapi_document());
 
     if (path == "/mcp") {
         if (req.method != "POST") {
@@ -1623,6 +1989,15 @@ inline int run_self_test() {
     std::printf("  [%s] %-14s %s\n", mcp_ok ? "PASS" : "FAIL", "mcp tools/list",
                 mcp_ok ? "" : "invalid JSON-RPC reply");
 
+    // The OpenAPI document is hand-written, so parse it to catch syntax slips.
+    bool spec_parsed = false;
+    Json spec = json_parse(openapi_document(), &spec_parsed);
+    bool spec_ok = spec_parsed && spec.find("paths") && spec.find("openapi") &&
+                   spec.find("components");
+    if (!spec_ok) failures++;
+    std::printf("  [%s] %-14s %s\n", spec_ok ? "PASS" : "FAIL", "openapi.json",
+                spec_ok ? "" : "document is not valid OpenAPI JSON");
+
     std::printf("\n  %d route(s) failed\n\n", failures);
     return failures == 0 ? 0 : 1;
 }
@@ -1639,6 +2014,7 @@ static void print_usage() {
         "Made by %s. Contact: %s\n\n"
         "Usage: beloapi [options]\n\n"
         "  --port <number>   port to listen on (default %d)\n"
+        "  --mcp-stdio       serve MCP over stdin/stdout for desktop AI clients\n"
         "  --test            call every upstream route and report, then exit\n"
         "  --version         print the version and exit\n"
         "  --help            show this help\n\n"
@@ -1648,6 +2024,7 @@ static void print_usage() {
         "  GET  /api/search?location=Mombasa&checkin=2026-12-10&checkout=2026-12-12&adults=2\n"
         "  GET  /api/markets | /api/homepage | /api/announcements | /api/promotions\n"
         "  GET  /api/header  | /api/consent  | /api/config\n"
+        "  GET  /openapi.json OpenAPI 3.1 description\n"
         "  POST /mcp         MCP JSON-RPC 2.0\n\n"
         "Docs: README.md and docs/SETUP.md\n",
         beloapi::kName, beloapi::kVersion, beloapi::kAuthor, beloapi::kContact,
@@ -1672,6 +2049,9 @@ int main(int argc, char** argv) {
         }
         if (arg == "--test") {
             return beloapi::run_self_test();
+        }
+        if (arg == "--mcp-stdio") {
+            return beloapi::run_mcp_stdio();
         }
         if (arg == "--port" && i + 1 < argc) {
             int port = std::atoi(argv[++i]);
