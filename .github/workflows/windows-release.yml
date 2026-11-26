@@ -1,0 +1,46 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build beloapi.exe
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MinGW
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-gcc
+
+      - name: Build
+        run: g++ -std=c++17 -O2 -static -o beloapi.exe server.cpp -lwinhttp -lws2_32
+
+      - name: Check the binary starts
+        run: ./beloapi.exe --version
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: beloapi-windows-x64
+          path: beloapi.exe
+          if-no-files-found: error
+
+      - name: Attach binary to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: beloapi.exe
+          generate_release_notes: true

@@ -1,0 +1,21 @@
+# Build output
+build/
+bin/
+*.exe
+*.o
+*.obj
+*.log
+
+# Local scratch
+.freebuff/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Reference material that must never be published.
+# client.cpp and recording.json are an apibuilder capture of airbnb.com used to
+# derive the endpoints; they are not part of this project and are not licensed
+# for redistribution.
+client.cpp
+recording.json
