@@ -27,13 +27,24 @@ without screen scraping.
 > personal and educational work, respect Airbnb's Terms of Service, and do not
 > use it to build a competing booking service. Read [DISCLAIMER](#disclaimer).
 
+## Demo
+
+Watch the full walkthrough — setting up BeloAPI as a local MCP server in Google
+Antigravity and querying live Airbnb stays and prices:
+
+<p align="center">
+  <a href="https://youtu.be/ac8bI8wr6nw" target="_blank" rel="noopener">
+    <img src="https://img.youtube.com/vi/ac8bI8wr6nw/maxresdefault.jpg" alt="Watch the BeloAPI MCP setup and live demo on YouTube" width="720">
+  </a>
+</p>
+
 ## Features
 
 - **JSON API** — stays search, place autocomplete, markets, homepage feed,
   announcements, promotions, header, consent flags and client config.
 - **MCP server** — JSON-RPC 2.0 over HTTP **or stdio** with nine tools, so
-  Claude Desktop, Claude Code, Cursor, Codex, VS Code and other MCP clients can
-  call it directly, with no bridge process.
+  Google Antigravity, Claude Desktop, Claude Code, Cursor, Codex, VS Code and
+  other MCP clients can call it directly, with no bridge process.
 - **One file** — `server.cpp` is the entire server. No npm, no Python, no DLLs.
 - **Anonymous** — no login, no cookies, no API keys of your own. It only reads
   public data.
@@ -114,9 +125,10 @@ rate limiting are covered in [docs/API.md](docs/API.md#8-deployment).
 
 BeloAPI speaks MCP two ways. Use whichever your client supports.
 
-**stdio** — for Claude Desktop, Cursor, VS Code, LM Studio and most desktop
-clients. The client launches the binary itself, so nothing needs to be running
-first and no Node bridge is needed:
+**stdio** — for Google Antigravity (`~/.gemini/config/mcp_config.json`), Claude
+Desktop, Cursor, VS Code, LM Studio and most desktop clients. The client launches
+the binary itself, so nothing needs to be running first and no Node bridge is
+needed:
 
 ```json
 {
